@@ -1,0 +1,61 @@
+name: Monthly Portfolio Optimizer & Commentary
+
+on:
+  schedule:
+    # ⏰ Executes automatically on the 1st of every month at 10:30 UTC (4:00 PM IST)
+    - cron: '30 10 1 * *'
+  workflow_dispatch:
+    # 🎛️ Dynamic interactive form fields for manually triggered runs
+    inputs:
+      sip_budget:
+        description: 'Total Monthly SIP Budget (INR)'
+        required: true
+        default: '30000'
+      stocks_count:
+        description: 'Unique Stock Count Per Strategy'
+        required: true
+        default: '5'
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # ✅ Necessary to allow the pipeline to push Markdown history logs back to your repo
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python Runtime
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install yfinance pandas tabulate
+
+    - name: Run Optimization Engine with Terminal Arguments
+      env:
+        # Link your encrypted repository secrets securely
+        # CALLMEBOT_API_KEY: ${{ secrets.CALLMEBOT_API_KEY }}
+        # TO_PHONE_NUMBER: ${{ secrets.TO_PHONE_NUMBER }}
+      
+      # ✅ THE CORE FIX: Pass the input variables directly inline as command-line arguments
+      run: python3 Strategy.py ${{ github.event.inputs.sip_budget || '100000' }} ${{ github.event.inputs.stocks_count || '5' }}
+
+    - name: Commit & Push Generated History Logs
+      run: |
+        git config --global user.name "GitHub Actions Bot"
+        git config --global user.email "actions@github.com"
+        
+        # Capture all generated CSV data files, Markdown history tables, and the automated commentary
+        git add zerodha_sip_basket.csv commentary_report.md history/*.csv history/*.md || true
+        
+        if git diff-index --quiet HEAD; then
+          echo "No new updates found this run."
+        else
+          git commit -m "Automated Portfolio Run - $(date +'%B %Y')"
+          git push origin main
+        fi
