@@ -238,11 +238,10 @@ def run_analysis():
     # --- STEP 5: AUTOMATED LOOKBACK COMMENTARY MATRIX ---
     generate_markdown_report(current_m_y, df_alloc, df_final)
 
-
 def generate_markdown_report(current_m_y, df_alloc, df_final):
     """
-    Audits last month's active basket file to generate a strategic re-ranking 
-    commentary ledger, explicitly flagging system drops or momentum upgrades.
+    Audits your live master portfolio inventory file. Batches all dropped stocks
+    to pull a single combined yfinance download for high-speed, error-free diagnostics.
     """
     report = f"# 📝 Portfolio Re-Ranking Commentary Report ({current_m_y.replace('_', ' ')})\n\n"
     report += f"**Target Allocation Parameters:** Budget ₹{TOTAL_BUDGET:,.2f} | Strategy Split: {STOCKS_COUNT}+{STOCKS_COUNT} Unique Split\n\n"
@@ -251,59 +250,92 @@ def generate_markdown_report(current_m_y, df_alloc, df_final):
     
     report += "## 🔍 Trend Audit & Dynamic Commentary Matrix\n"
     
-    # 📁 TARGET BASKET CROSS-CHECK LAYER
-    past_basket_file = "zerodha_sip_basket.csv"
+    master_portfolio_file = "portfolio.csv"
     
-    if os.path.exists(past_basket_file):
+    if os.path.exists(master_portfolio_file):
         try:
-            df_past_basket = pd.read_csv(past_basket_file)
-            past_holdings = df_past_basket[['Ticker', 'Strategy']].to_dict('records')
-            report += f"Analyzing active portfolio holdings from previous month's baseline (`{past_basket_file}`)...\n\n"
+            df_master = pd.read_csv(master_portfolio_file, encoding='utf-8-sig')
             
-            # Loop through every single stock you owned last month
-            for asset in past_holdings:
+            # Clean and flatten headers safely
+            df_master.columns = [str(c).strip().lower() for c in df_master.columns]
+            
+            t_col = 'ticker' if 'ticker' in df_master.columns else df_master.columns[0]
+            s_col = 'strategy' if 'strategy' in df_master.columns else df_master.columns[1]
+            
+            live_holdings = []
+            for _, r in df_master.dropna(subset=[t_col]).iterrows():
+                live_holdings.append({
+                    'Ticker': str(r[t_col]).strip().upper(),
+                    'Strategy': str(r[s_col]).strip()
+                })
+            
+            report += f"Analyzing active stock positions directly from your master ledger (`{master_portfolio_file}`)...\n\n"
+            
+            df_final_clean = df_final.copy()
+            df_final_clean.columns = [str(c).strip() for c in df_final_clean.columns]
+            
+            # STEP 1: PRE-IDENTIFY ALL DROPPED TICKERS FOR BATCH DOWNLOADING
+            dropped_tickers_ns = []
+            for asset in live_holdings:
+                ticker = asset['Ticker']
+                if ticker not in df_final_clean['Ticker'].values:
+                    dropped_tickers_ns.append(f"{ticker}.NS")
+            
+            # BATCH BULK DOWNLOAD LAYER
+            batch_diag_data = pd.DataFrame()
+            if dropped_tickers_ns:
+                print(f"📥 Batch-downloading metrics for {len(dropped_tickers_ns)} dropped portfolio assets...")
+                batch_diag_data = yf.download(dropped_tickers_ns, period="1y", group_by='ticker', progress=False)
+            
+            # STEP 2: LOOP AND EVALUATE CRITERIA
+            for asset in live_holdings:
                 ticker = asset['Ticker']
                 origin = asset['Strategy']
+                ticker_ns = f"{ticker}.NS"
                 
-                # Check if this portfolio stock is still alive in today's passed matrix pool
-                if ticker in df_final['Ticker'].values:
-                    curr_row = df_final[df_final['Ticker'] == ticker].iloc[0]
+                # ✅ SCENARIO A: Stock passed all guardrails and is actively ranked
+                if ticker in df_final_clean['Ticker'].values:
+                    curr_row = df_final_clean[df_final_clean['Ticker'] == ticker].iloc[0]
                     
-                    # Generate accurate real-time active ranks based on strategy alignment
-                    if origin == 'Compounding':
-                        df_sorted = df_final.sort_values(by='Score Comp%', ascending=False)
+                    if origin.lower() == 'compounding':
+                        df_sorted = df_final_clean.sort_values(by='Score Comp%', ascending=False)
                         curr_rank = df_sorted['Ticker'].tolist().index(ticker) + 1
                         curr_score = curr_row['Score Comp%']
                     else:
-                        df_sorted = df_final.sort_values(by='Score Vel%', ascending=False)
+                        df_sorted = df_final_clean.sort_values(by='Score Vel%', ascending=False)
                         curr_rank = df_sorted['Ticker'].tolist().index(ticker) + 1
                         curr_score = curr_row['Score Vel%']
                     
-                    # Look up previous rank from last month's history file to compute delta
                     prev_rank = "N/A"
                     delta_str = ""
                     
-                    # ✅ FIXED DATE LOGIC: Look for historical logs while handling folder sorting cleanly
                     if os.path.exists('history'):
                         history_files = sorted([f for f in os.listdir('history') if f.startswith(f"{origin.lower()}_")])
-                        # If a historical file exists that isn't today's fresh log, pull its rank columns
-                        if history_files:
-                            # Read the absolute latest historical tracking csv from disk
-                            df_hist_log = pd.read_csv(f"history/{history_files[-1]}")
-                            if ticker in df_hist_log['Ticker'].values:
-                                rank_col = 'Rank_Compounding' if origin == 'Compounding' else 'Rank_Velocity'
-                                prev_rank = int(df_hist_log[df_hist_log['Ticker'] == ticker][rank_col].values[0])
-                                delta = prev_rank - curr_rank
-                                delta_str = f" ({delta:+} positions)"
+                        if len(history_files) > 0:
+                            df_hist_log = pd.read_csv(f"history/{history_files[-1]}", encoding='utf-8-sig')
+                            df_hist_log.columns = [str(c).strip().lower() for c in df_hist_log.columns]
+                            
+                            # ✅ THE REPAIR: Force hist_t_col to resolve to a unique string name element instead of returning the entire index grid layout
+                            hist_t_col = next((c for c in df_hist_log.columns if 'ticker' in c), df_hist_log.columns[0])
+                            
+                            # Safely convert column strings to uppercase for evaluation passes
+                            df_hist_log[hist_t_col] = df_hist_log[hist_t_col].astype(str).str.strip().str.upper()
+                            
+                            if ticker in df_hist_log[hist_t_col].values:
+                                target_rank_col = 'rank_compounding' if origin.lower() == 'compounding' else 'rank_velocity'
+                                actual_rank_col = next((c for c in df_hist_log.columns if target_rank_col in c or 'rank' in c), None)
+                                if actual_rank_col:
+                                    match_row = df_hist_log[df_hist_log[hist_t_col] == ticker]
+                                    prev_rank = int(match_row[actual_rank_col].values[0])
+                                    delta = prev_rank - curr_rank
+                                    delta_str = f" ({delta:+} positions)"
                     
-                    # Check if it survived but slipped deeply down past the elite Top 30 window
                     is_outside_top30 = curr_rank > 30
-                    
-                    report += f"### 🔹 {ticker} ({origin} Anchor)\n"
+                    report += f"### 🔹 {ticker} ({origin} Strategy)\n"
                     report += f"* **Current Status:** Price: ₹{curr_row['Price']:.2f} | Today's Strategy Score: {curr_score}% | Active Rank: #{curr_rank}{delta_str}\n"
                     
                     if is_outside_top30:
-                        report += f"* ⚠️ **MOMENTUM SLIPPAGE ALERT:** This asset has slid down to **Rank #{curr_rank}**, completely dropping out of the elite Top 30 window. Trend velocity has significantly decayed.\n"
+                        report += f"* ⚠️ **MOMENTUM SLIPPAGE ALERT:** This asset has slid down to **Rank #{curr_rank}**, dropping out of the Top 30 window. Velocity has decayed.\n"
                     elif delta_str and delta > 3:
                         report += "* 🚀 **Momentum Expansion:** Institutional velocity is accelerating month-over-month.\n"
                     elif delta_str and delta < -4:
@@ -311,25 +343,88 @@ def generate_markdown_report(current_m_y, df_alloc, df_final):
                     else:
                         report += "* 🟢 **Stable Tracking:** Maintaining clean, steady compounding geometric tracking.\n"
                         
+                # 🚨 ✅ SCENARIO B: STOCK DROPPED. PROCESS DIAGNOSTICS FROM BATCH DATA
                 else:
-                    # 🚨 🛑 EMERGENCY TRIGGER ACCESSED 
-                    # The stock completely missed the filtered dataframe cuts during today's analytical pass!
-                    report += f"### ❌ {ticker} ({origin} Anchor) | **DANGER FLAG**\n"
-                    report += f"* 🛑 **EMERGENCY SYSTEM DROP:** This asset failed your core trend guardrails, volume liquidity thresholds, or crossed your strict 15% drawdown safety limits this month. **Halt the SIP additions immediately** to preserve capital.\n"
+                    report += f"### ❌ {ticker} ({origin} Strategy) | **DANGER FLAG** 🛑\n"
+                    report += f"* 🛑 **EMERGENCY SYSTEM DROP:** This asset was completely removed from the fresh investment ranking tables this month.\n"
+                    
+                    try:
+                        has_ticker_data = False
+                        diag_df = pd.DataFrame()
+                        
+                        if not batch_diag_data.empty:
+                            if isinstance(batch_diag_data.columns, pd.MultiIndex):
+                                if ticker_ns in batch_diag_data.columns.get_level_values(0):
+                                    diag_df = batch_diag_data.xs(ticker_ns, axis=1, level=0).dropna()
+                                    has_ticker_data = not diag_df.empty
+                            else:
+                                diag_df = batch_diag_data.dropna()
+                                has_ticker_data = not diag_df.empty
+                        
+                        if has_ticker_data and 'Close' in diag_df.columns:
+                            close_s = diag_df['Close'].squeeze()
+                            vol_s = diag_df['Volume'].squeeze()
+
+                            # 🌟 ADDED: RSI 21 Diagnostic Calculation Engine
+                            delta = close_s.diff()
+                            gain = delta.where(delta > 0, 0)
+                            loss = -delta.where(delta < 0, 0)
+                            avg_gain = gain.ewm(com=20, adjust=False).mean() # com = period - 1
+                            avg_loss = loss.ewm(com=20, adjust=False).mean()
+                            rsi21 = 100 - (100 / (1 + (avg_gain / avg_loss)))
+                            cur_rsi21 = float(rsi21.iloc[-1].item() if hasattr(rsi21.iloc[-1], 'item') else rsi21.iloc[-1])
+                            
+                            ema5 = close_s.ewm(span=5, adjust=False).mean()
+                            ema20 = close_s.ewm(span=20, adjust=False).mean()
+                            ema50 = close_s.ewm(span=50, adjust=False).mean()
+                            ema100 = close_s.ewm(span=100, adjust=False).mean()
+                            ema200 = close_s.ewm(span=200, adjust=False).mean()
+                            
+                            val_5 = float(ema5.iloc[-1].item() if hasattr(ema5.iloc[-1], 'item') else ema5.iloc[-1])
+                            val_20 = float(ema20.iloc[-1].item() if hasattr(ema20.iloc[-1], 'item') else ema20.iloc[-1])
+                            val_50 = float(ema50.iloc[-1].item() if hasattr(ema50.iloc[-1], 'item') else ema50.iloc[-1])
+                            val_100 = float(ema100.iloc[-1].item() if hasattr(ema100.iloc[-1], 'item') else ema100.iloc[-1])
+                            val_200 = float(ema200.iloc[-1].item() if hasattr(ema200.iloc[-1], 'item') else ema200.iloc[-1])
+                            
+                            diff_5_20 = ((val_5 - val_20) / val_20) * 100
+                            w1m = close_s.iloc[-21:]
+                            max_dd = ((w1m.max() - w1m.min()) / w1m.max()) * 100
+                            liq = float(close_s.iloc[-20:].mean()) * float(vol_s.iloc[-20:].mean())
+                            
+                            report += f"  * **Diagnostic Data Snapshot:** Current Price: ₹{close_s.iloc[-1]:.2f} | Short-Term Trend Gap: {diff_5_20:.2f}% | 1-Month Max Drawdown: {max_dd:.2f}%\n"
+                            
+                            if len(diag_df) < 200:
+                                report += f"  * ❌ **Diagnostic Reason:** Stock has less than 200 days of active trading history on the NSE. Cannot compute macro-indicators safely.\n"
+                            elif diff_5_20 < -1.0:
+                                report += f"  * ❌ **Diagnostic Reason:** **SHORT-TERM TREND BREAKDOWN.** The 5 EMA has cracked below the 20 EMA past your strict **-1.0% Soft Buffer Threshold**. The stock is entering active short-term distribution/reversion.\n"
+                            elif max_dd > 15.0:
+                                report += f"  * ❌ **Diagnostic Reason:** **RISK WINDOW EXCEEDED.** The asset has crashed by **{max_dd:.2f}%** from its peak over the last 21 sessions, breaching your strict **15% Max Drawdown Ceiling**.\n"
+                            elif liq <= 50000000:
+                                report += f"  * ❌ **Diagnostic Reason:** **LIQUIDITY FAILURE.** Average daily turnover value over the last 20 days dropped below ₹5 Crore, breaching your execution liquidity floor.\n"
+                            elif not (val_20 > val_50 > val_100 > val_200):
+                                report += f"  * ❌ **Diagnostic Reason:** **MACRO TREND ROLLOVER.** The moving averages have lost their bullish structural stack configuration (`EMA 20 > 50 > 100 > 200`). Trend lines have flipped bearish or flattened.\n"
+                            elif cur_rsi21 < 50.0:
+                                report += f"  * ❌ **Diagnostic Reason:** **RSI 21 WEAKNESS.** The short-term momentum oscillator has dropped below the neutral 50.0 threshold, indicating a loss of buying pressure.\n"
+                            else:
+                                report += f"  * ❌ **Diagnostic Reason:** Stock was excluded due to an unclassified baseline rule filter.\n"
+                        else:
+                            report += f"  * ❌ **Diagnostic Reason:** Ticker shortcode mismatch. Asset code `{ticker_ns}` not found on yfinance NSE servers. Check for recent symbol renames or spelling typos.\n"
+                    except Exception as diag_err:
+                        report += f"  * ⚠️ Diagnostic parser execution error encountered: {diag_err}\n"
                 
                 report += "\n" + "-" * 80 + "\n"
         except Exception as e:
-            report += f"\n⚠️ Error parsing previous basket history configuration: {e}\n"
+            report += f"\n⚠️ Error parsing master portfolio ledger configuration: {e}\n"
     else:
-        report += "_Baseline basket file (`zerodha_sip_basket.csv`) not found in repository root. Historical tracker initialized._\n"
+        report += "_Master portfolio ledger file (`portfolio.csv`) not found in root. Skipping commentary._\n"
         
     with open("commentary_report.md", "w") as f:
         f.write(report)
-        
-    # 🌟 CODESPACES TERMINAL PRINT INJECTOR: Prints the complete markdown file straight to your shell window
-    print("\n📝 ======================================= GENERATED MARKDOWN REPORT PREVIEW =======================================")
+
+    print("\n📝 ======================================= GENERATED DIAGNOSTIC MARKDOWN REPORT PREVIEW =======================================")
     print(report)
     print("====================================================================================================================\n")
+
 
 if __name__ == "__main__":
     # Create the required history subdirectory if missing from folder tree
