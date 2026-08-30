@@ -37,11 +37,12 @@ jobs:
         pip install yfinance pandas tabulate
 
     - name: Run Optimization Engine with Terminal Arguments
-      env:
-        # Link your encrypted repository secrets securely
-        # CALLMEBOT_API_KEY: ${{ secrets.CALLMEBOT_API_KEY }}
-        # TO_PHONE_NUMBER: ${{ secrets.TO_PHONE_NUMBER }}
-      
+      # env:
+      # Link your encrypted repository secrets securely here if needed:
+      # env:
+      #   CALLMEBOT_API_KEY: ${{ secrets.CALLMEBOT_API_KEY }}
+      #   TO_PHONE_NUMBER: ${{ secrets.TO_PHONE_NUMBER }}
+
       # ✅ THE CORE FIX: Pass the input variables directly inline as command-line arguments
       run: python3 Strategy.py ${{ github.event.inputs.sip_budget || '100000' }} ${{ github.event.inputs.stocks_count || '5' }}
 
