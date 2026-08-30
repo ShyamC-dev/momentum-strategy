@@ -12,15 +12,14 @@ from datetime import datetime
 TO_WHATSAPP = os.environ.get("TO_WHATSAPP_NUMBER")
 FROM_WHATSAPP = "whatsapp:+14155238886"
 
-# Inline map dictionary to correct yfinance spelling mismatches & rebrands
-ticker_fixes = {
-    "CENTURYTEX": "CENTURYTEX-EQ.NS", "GMRINFRA": "GMRINFRA-EQ.NS", "INFIBEAM": "CCAVENUE.NS",
-    "JKLACEM": "JKLAKSHMI.NS", "LTIM": "LTM.NS", "MOTORS": "TATAMOTORS.NS", "NIPPON": "NAM-INDIA.NS",
-    "BAJAJ-AUTO": "BAJAJ-AUTO.NS", "CHOLAHLD": "CHOLAHLDNG.NS", "M&M": "M&M.NS", "M&MFIN": "M&MFIN.NS",
-    "MCDOWELL-N": "MCDOWELL-N.NS", "ESCORTKUB": "ESCORTS.NS"
-}
-
 def get_nifty250():
+    # Inline map dictionary to correct yfinance spelling mismatches & rebrands
+    ticker_fixes = {
+        "CENTURYTEX": "CENTURYTEX-EQ.NS", "GMRINFRA": "GMRINFRA-EQ.NS", "INFIBEAM": "CCAVENUE.NS",
+        "JKLACEM": "JKLAKSHMI.NS", "LTIM": "LTM.NS", "MOTORS": "TATAMOTORS.NS", "NIPPON": "NAM-INDIA.NS",
+        "BAJAJ-AUTO": "BAJAJ-AUTO.NS", "CHOLAHLD": "CHOLAHLDNG.NS", "M&M": "M&M.NS", "M&MFIN": "M&MFIN.NS",
+        "MCDOWELL-N": "MCDOWELL-N.NS", "ESCORTKUB": "ESCORTS.NS"
+    }
     # Generate a unique string for the current Month and Year (e.g., "August_2026")
     current_month_year = datetime.now().strftime("%B_%Y")
     cache_filename = f"nifty250_{current_month_year}.csv"
