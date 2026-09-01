@@ -12,6 +12,169 @@ from datetime import datetime
 TO_WHATSAPP = os.environ.get("TO_WHATSAPP_NUMBER")
 FROM_WHATSAPP = "whatsapp:+14155238886"
 
+
+def calc_21d_high_low_range(high_s, low_s):
+    """Return the simple max high to min low range % within the last 21 sessions."""
+    high_21 = pd.Series(high_s).dropna().iloc[-21:]
+    low_21 = pd.Series(low_s).dropna().iloc[-21:]
+    if high_21.empty or low_21.empty:
+        return 0.0
+    return float(((high_21.max() - low_21.min()) / high_21.max()) * 100)
+
+
+def calc_21d_peak_to_trough_drawdown(close_s):
+    """Return the true peak-to-trough drawdown % over the last 21 sessions."""
+    close_21 = pd.Series(close_s).dropna().iloc[-21:]
+    if close_21.empty:
+        return 0.0
+    running_peak = close_21.cummax()
+    drawdown_pct = ((running_peak - close_21) / running_peak) * 100
+    return float(drawdown_pct.max())
+
+
+def compute_stock_guardrails(stock_df):
+    """Return all shared guardrail metrics for a stock's last 21-day risk and trend state."""
+    close_s = pd.Series(stock_df['Close']).dropna()
+    high_s = pd.Series(stock_df['High']).dropna()
+    low_s = pd.Series(stock_df['Low']).dropna()
+    vol_s = pd.Series(stock_df['Volume']).dropna()
+
+    if close_s.empty or vol_s.empty:
+        return {
+            'Close': pd.Series(dtype=float),
+            'High': pd.Series(dtype=float),
+            'Low': pd.Series(dtype=float),
+            'Volume': pd.Series(dtype=float),
+            'ema5': pd.Series(dtype=float),
+            'ema20': pd.Series(dtype=float),
+            'ema50': pd.Series(dtype=float),
+            'ema100': pd.Series(dtype=float),
+            'ema200': pd.Series(dtype=float),
+            'cur_rsi21': 0.0,
+            'diff_5_20': 0.0,
+            'max_dd': 0.0,
+            'range_21d': 0.0,
+            'liq': 0.0,
+            'val_5': 0.0,
+            'val_20': 0.0,
+            'val_50': 0.0,
+            'val_100': 0.0,
+            'val_200': 0.0,
+        }
+
+    ema5 = close_s.ewm(span=5, adjust=False).mean()
+    ema20 = close_s.ewm(span=20, adjust=False).mean()
+    ema50 = close_s.ewm(span=50, adjust=False).mean()
+    ema100 = close_s.ewm(span=100, adjust=False).mean()
+    ema200 = close_s.ewm(span=200, adjust=False).mean()
+
+    delta = close_s.diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.ewm(com=20, adjust=False).mean()
+    avg_loss = loss.ewm(com=20, adjust=False).mean()
+    rsi21 = 100 - (100 / (1 + (avg_gain / avg_loss)))
+    cur_rsi21 = float(rsi21.iloc[-1])
+
+    val_5 = float(ema5.iloc[-1])
+    val_20 = float(ema20.iloc[-1])
+    val_50 = float(ema50.iloc[-1])
+    val_100 = float(ema100.iloc[-1])
+    val_200 = float(ema200.iloc[-1])
+    diff_5_20 = ((val_5 - val_20) / val_20) * 100
+    max_dd = calc_21d_peak_to_trough_drawdown(close_s)
+    range_21d = calc_21d_high_low_range(high_s, low_s)
+    liq = float(close_s.iloc[-20:].mean()) * float(vol_s.iloc[-20:].mean())
+
+    return {
+        'Close': close_s,
+        'High': high_s,
+        'Low': low_s,
+        'Volume': vol_s,
+        'ema5': ema5,
+        'ema20': ema20,
+        'ema50': ema50,
+        'ema100': ema100,
+        'ema200': ema200,
+        'cur_rsi21': cur_rsi21,
+        'diff_5_20': diff_5_20,
+        'max_dd': max_dd,
+        'range_21d': range_21d,
+        'liq': liq,
+        'val_5': val_5,
+        'val_20': val_20,
+        'val_50': val_50,
+        'val_100': val_100,
+        'val_200': val_200,
+    }
+
+
+def passes_stock_entry_filter(metrics):
+    """Entry screening: only the rules relevant to fresh buys."""
+    if metrics['cur_rsi21'] < 50.0:
+        return False, 'RSI 21 below 50'
+    if not (metrics['ema20'].iloc[-1] > metrics['ema50'].iloc[-1] > metrics['ema100'].iloc[-1] > metrics['ema200'].iloc[-1]):
+        return False, 'EMA stack not bullish'
+    if len(metrics['ema20']) < 21:
+        return False, 'Insufficient trend lookback'
+    if metrics['ema20'].iloc[-1] <= metrics['ema20'].iloc[-21]:
+        return False, 'EMA20 not trending higher'
+    if metrics['range_21d'] > 15.0:
+        return False, '21D risk window exceeded'
+    if metrics['liq'] <= 50000000:
+        return False, 'Liquidity below threshold'
+    if metrics['diff_5_20'] < -1.5:
+        return False, 'Short-term EMA breakdown'
+    return True, 'Pass'
+
+
+def passes_stock_exit_filter(metrics):
+    """Exit/hard-risk logic for existing holdings. Liquidity is intentionally excluded."""
+    if metrics['cur_rsi21'] < 50.0:
+        return False, 'RSI 21 below 50'
+    if not (metrics['ema20'].iloc[-1] > metrics['ema50'].iloc[-1] > metrics['ema100'].iloc[-1] > metrics['ema200'].iloc[-1]):
+        return False, 'EMA stack not bullish'
+    if len(metrics['ema20']) < 21:
+        return False, 'Insufficient trend lookback'
+    if metrics['ema20'].iloc[-1] <= metrics['ema20'].iloc[-21]:
+        return False, 'EMA20 not trending higher'
+    if metrics['range_21d'] > 15.0:
+        return False, '21D risk window exceeded'
+    if metrics['diff_5_20'] < -1.5:
+        return False, 'Short-term EMA breakdown'
+    return True, 'Pass'
+
+
+def passes_stock_risk_filter(metrics):
+    """Backward-compatible alias for the older single gate. Prefer entry/exit-specific functions."""
+    return passes_stock_entry_filter(metrics)
+
+
+def classify_unranked_portfolio_status(metrics, outside_top30=False):
+    """Explain why a stock is missing from the current ranking table.
+
+    If the stock is not found in the current month's ranking, it is treated as a
+    confirmed outside-Top-30 condition. That means the exit decision is driven by
+    the portfolio risk policy rather than by the fresh-entry screen.
+    """
+    entry_passed, entry_reason = passes_stock_entry_filter(metrics)
+    exit_passed, exit_reason = passes_stock_exit_filter(metrics)
+
+    if not entry_passed and entry_reason == 'Liquidity below threshold':
+        return 'ENTRY_SCREEN', 'Liquidity below threshold - not selected for fresh entry, not a trend exit.'
+    if not entry_passed:
+        return 'ENTRY_SCREEN', entry_reason
+
+    if outside_top30:
+        if exit_passed:
+            return 'EXIT_RISK', 'Not found in the current ranking tables and therefore outside the current Top 30; this is a rank decay exit case.'
+        return 'EXIT_RISK', f'Not found in the current ranking tables and therefore outside the current Top 30. {exit_reason}'
+
+    if exit_passed:
+        return 'HOLD_OK', 'Passed the exit guardrails; not in the current Top 30, but it remains safe to hold.'
+    return 'EXIT_RISK', exit_reason
+
+
 def get_nifty250():
     # Inline map dictionary to correct yfinance spelling mismatches & rebrands
     ticker_fixes = {
@@ -107,54 +270,28 @@ def run_analysis():
               print("Dropped {} due to less than 200 days of data".format(ticker))
               continue
         
-            close_s = stock_df['Close']
-            vol_s = stock_df['Volume']
-        
-            ema5 = close_s.ewm(span=5, adjust=False).mean()
-            ema20 = close_s.ewm(span=20, adjust=False).mean()
-            ema50 = close_s.ewm(span=50, adjust=False).mean()
-            ema100 = close_s.ewm(span=100, adjust=False).mean()
-            ema200 = close_s.ewm(span=200, adjust=False).mean()
-            # 🌟 RSI 21 CALCULATION ENGINE
-            delta = close_s.diff()
-            gain = delta.where(delta > 0, 0)
-            loss = -delta.where(delta < 0, 0)
-        
-            avg_gain = gain.ewm(com=20, adjust=False).mean() # com = period - 1
-            avg_loss = loss.ewm(com=20, adjust=False).mean()
-        
-            rsi21 = 100 - (100 / (1 + (avg_gain / avg_loss)))
-            cur_rsi21 = float(rsi21.iloc[-1])
-        
-            # 🔒 RSI 50 FILTER GATE
-            if cur_rsi21 < 50.0: 
+            metrics = compute_stock_guardrails(stock_df)
+            close_s = metrics['Close']
+            passed, reason = passes_stock_entry_filter(metrics)
+            if not passed:
                 continue
-        
-            # [a] Trend Order Check
-            if not (ema20.iloc[-1] > ema50.iloc[-1] > ema100.iloc[-1] > ema200.iloc[-1]): continue
-            # [b] Momentum Check
-            if ema20.iloc[-1] <= ema20.iloc[-21]: continue
-            # [c] Max 1-Month Drawdown Check
-            w1m = close_s.iloc[-21:]
-            max_dd = ((w1m.max() - w1m.min()) / w1m.max()) * 100
-            if max_dd > 15.0: continue
-            # [d] Liquidity Check
-            liq = float(close_s.iloc[-20:].mean()) * float(vol_s.iloc[-20:].mean())
-            if liq <= 50000000: continue
 
             # Calculate your 3 trend difference percentages established in your model
             # ✅ FIX: Extract the latest single number ([-1]) before doing arithmetic
-            val_5 = float(ema5.iloc[-1])
-            val_20 = float(ema20.iloc[-1])
-            val_50 = float(ema50.iloc[-1])
-            val_100 = float(ema100.iloc[-1])
+            val_5 = metrics['val_5']
+            val_20 = metrics['val_20']
+            val_50 = metrics['val_50']
+            val_100 = metrics['val_100']
         
             # Calculate your 3 trend difference percentages cleanly using individual scalars
-            diff_5_20 = ((val_5 - val_20) / val_20) * 100
+            diff_5_20 = metrics['diff_5_20']
+            max_dd = metrics['max_dd']
+            range_21d = metrics['range_21d']
+            liq = metrics['liq']
 
             # [e] 🔒 THE SOFT-BUFFER GUARDRAIL
             # Allows minor tracking pullbacks (up to -1.0%) but axes true distribution/reversion crashes
-            if diff_5_20 < -1.0: 
+            if diff_5_20 < -1.5: 
                 continue
             diff_20_50 = ((val_20 - val_50) / val_50) * 100
             diff_50_100 = ((val_50 - val_100) / val_100) * 100
@@ -166,7 +303,7 @@ def run_analysis():
                 'Ticker': ticker.replace('.NS', '').replace('-EQ', ''), 'Price': round(close_s.iloc[-1], 2),
                 'Score Vel%': round(score_vel, 2), 'Score Comp%': round(score_comp, 2),
                 'EMA5,20 Diff %': round(diff_5_20, 2), 'EMA20, 50 Diff %': round(diff_20_50, 2),
-                'EMA50, 100 Diff %': round(diff_50_100, 2), '1M Max DD%': round(max_dd, 2), 'Liquidity(Cr)': round(liq / 10000000, 2)
+                'EMA50, 100 Diff %': round(diff_50_100, 2), '1M Max DD%': round(max_dd, 2), '1M High-Low Range %': round(range_21d, 2), 'Liquidity(Cr)': round(liq / 10000000, 2)
             })
         except Exception as e:
             print(f"⚠️ Error processing {ticker}: {e}")
@@ -183,7 +320,7 @@ def run_analysis():
     # Save the standard raw data csv sheet
     df_vel_sorted.head(30).to_csv(f"history/velocity_{current_m_y}.csv", index=False)
     
-    # ✅ NEW: Render and save a beautifully readable Top 30 Markdown report instantly
+    # ✅ Render and save a beautifully readable Top 30 Markdown report instantly
     columns_vel_md = ['Rank_Velocity', 'Ticker', 'Price', 'Score Vel%', 'EMA5,20 Diff %', '1M Max DD%']
     with open(f"history/velocity_{current_m_y}.md", "w") as f_vel:
         f_vel.write(f"# 🏎️ Top 30 Velocity Leaders Snapshot - {current_m_y.replace('_', ' ')}\n\n")
@@ -197,7 +334,7 @@ def run_analysis():
     # Save the standard raw data csv sheet
     df_comp_sorted.head(30).to_csv(f"history/compounding_{current_m_y}.csv", index=False)
     
-    # ✅ NEW: Render and save a beautifully readable Top 30 Markdown report instantly
+    # ✅ Render and save a beautifully readable Top 30 Markdown report instantly
     columns_comp_md = ['Rank_Compounding', 'Ticker', 'Price', 'Score Comp%', 'EMA20, 50 Diff %', 'EMA50, 100 Diff %', '1M Max DD%']
     with open(f"history/compounding_{current_m_y}.md", "w") as f_comp:
         f_comp.write(f"# 🏋️ Top 30 Compounding Leaders Snapshot - {current_m_y.replace('_', ' ')}\n\n")
@@ -343,15 +480,14 @@ def generate_markdown_report(current_m_y, df_alloc, df_final):
                     else:
                         report += "* 🟢 **Stable Tracking:** Maintaining clean, steady compounding geometric tracking.\n"
                         
-                # 🚨 ✅ SCENARIO B: STOCK DROPPED. PROCESS DIAGNOSTICS FROM BATCH DATA
+                # 🚨 ✅ SCENARIO B: STOCK IS MISSING FROM THIS MONTH'S RANKING
                 else:
-                    report += f"### ❌ {ticker} ({origin} Strategy) | **DANGER FLAG** 🛑\n"
-                    report += f"* 🛑 **EMERGENCY SYSTEM DROP:** This asset was completely removed from the fresh investment ranking tables this month.\n"
-                    
+                    report += f"### ❌ {ticker} ({origin} Strategy) | **REVIEW / FILTERED OUT**\n"
+
                     try:
                         has_ticker_data = False
                         diag_df = pd.DataFrame()
-                        
+
                         if not batch_diag_data.empty:
                             if isinstance(batch_diag_data.columns, pd.MultiIndex):
                                 if ticker_ns in batch_diag_data.columns.get_level_values(0):
@@ -360,53 +496,27 @@ def generate_markdown_report(current_m_y, df_alloc, df_final):
                             else:
                                 diag_df = batch_diag_data.dropna()
                                 has_ticker_data = not diag_df.empty
-                        
-                        if has_ticker_data and 'Close' in diag_df.columns:
-                            close_s = diag_df['Close'].squeeze()
-                            vol_s = diag_df['Volume'].squeeze()
 
-                            # 🌟 ADDED: RSI 21 Diagnostic Calculation Engine
-                            delta = close_s.diff()
-                            gain = delta.where(delta > 0, 0)
-                            loss = -delta.where(delta < 0, 0)
-                            avg_gain = gain.ewm(com=20, adjust=False).mean() # com = period - 1
-                            avg_loss = loss.ewm(com=20, adjust=False).mean()
-                            rsi21 = 100 - (100 / (1 + (avg_gain / avg_loss)))
-                            cur_rsi21 = float(rsi21.iloc[-1].item() if hasattr(rsi21.iloc[-1], 'item') else rsi21.iloc[-1])
-                            
-                            ema5 = close_s.ewm(span=5, adjust=False).mean()
-                            ema20 = close_s.ewm(span=20, adjust=False).mean()
-                            ema50 = close_s.ewm(span=50, adjust=False).mean()
-                            ema100 = close_s.ewm(span=100, adjust=False).mean()
-                            ema200 = close_s.ewm(span=200, adjust=False).mean()
-                            
-                            val_5 = float(ema5.iloc[-1].item() if hasattr(ema5.iloc[-1], 'item') else ema5.iloc[-1])
-                            val_20 = float(ema20.iloc[-1].item() if hasattr(ema20.iloc[-1], 'item') else ema20.iloc[-1])
-                            val_50 = float(ema50.iloc[-1].item() if hasattr(ema50.iloc[-1], 'item') else ema50.iloc[-1])
-                            val_100 = float(ema100.iloc[-1].item() if hasattr(ema100.iloc[-1], 'item') else ema100.iloc[-1])
-                            val_200 = float(ema200.iloc[-1].item() if hasattr(ema200.iloc[-1], 'item') else ema200.iloc[-1])
-                            
-                            diff_5_20 = ((val_5 - val_20) / val_20) * 100
-                            w1m = close_s.iloc[-21:]
-                            max_dd = ((w1m.max() - w1m.min()) / w1m.max()) * 100
-                            liq = float(close_s.iloc[-20:].mean()) * float(vol_s.iloc[-20:].mean())
-                            
-                            report += f"  * **Diagnostic Data Snapshot:** Current Price: ₹{close_s.iloc[-1]:.2f} | Short-Term Trend Gap: {diff_5_20:.2f}% | 1-Month Max Drawdown: {max_dd:.2f}%\n"
-                            
-                            if len(diag_df) < 200:
-                                report += f"  * ❌ **Diagnostic Reason:** Stock has less than 200 days of active trading history on the NSE. Cannot compute macro-indicators safely.\n"
-                            elif diff_5_20 < -1.0:
-                                report += f"  * ❌ **Diagnostic Reason:** **SHORT-TERM TREND BREAKDOWN.** The 5 EMA has cracked below the 20 EMA past your strict **-1.0% Soft Buffer Threshold**. The stock is entering active short-term distribution/reversion.\n"
-                            elif max_dd > 15.0:
-                                report += f"  * ❌ **Diagnostic Reason:** **RISK WINDOW EXCEEDED.** The asset has crashed by **{max_dd:.2f}%** from its peak over the last 21 sessions, breaching your strict **15% Max Drawdown Ceiling**.\n"
-                            elif liq <= 50000000:
-                                report += f"  * ❌ **Diagnostic Reason:** **LIQUIDITY FAILURE.** Average daily turnover value over the last 20 days dropped below ₹5 Crore, breaching your execution liquidity floor.\n"
-                            elif not (val_20 > val_50 > val_100 > val_200):
-                                report += f"  * ❌ **Diagnostic Reason:** **MACRO TREND ROLLOVER.** The moving averages have lost their bullish structural stack configuration (`EMA 20 > 50 > 100 > 200`). Trend lines have flipped bearish or flattened.\n"
-                            elif cur_rsi21 < 50.0:
-                                report += f"  * ❌ **Diagnostic Reason:** **RSI 21 WEAKNESS.** The short-term momentum oscillator has dropped below the neutral 50.0 threshold, indicating a loss of buying pressure.\n"
+                        if has_ticker_data and 'Close' in diag_df.columns:
+                            metrics = compute_stock_guardrails(diag_df)
+                            close_s = metrics['Close']
+                            diff_5_20 = metrics['diff_5_20']
+                            max_dd = metrics['max_dd']
+                            range_21d = metrics['range_21d']
+                            status, rejection_reason = classify_unranked_portfolio_status(metrics, outside_top30=True)
+
+                            report += f"  * **Diagnostic Data Snapshot:** Current Price: ₹{close_s.iloc[-1]:.2f} | Short-Term Trend Gap: {diff_5_20:.2f}% | 21D Peak-to-Trough Drawdown: {max_dd:.2f}% | 21D High-Low Range: {range_21d:.2f}%\n"
+
+                            if status == 'ENTRY_SCREEN':
+                                report += f"  * ⚠️ **Diagnostic Reason:** {rejection_reason}\n"
+                                report += "  * ℹ️ **Interpretation:** This stock failed the fresh-entry screening (for example, low liquidity), not the active portfolio exit-risk check.\n"
+                            elif status == 'EXIT_RISK':
+                                report += f"  * ❌ **Diagnostic Reason:** {rejection_reason}\n"
+                                report += "  * ℹ️ **Interpretation:** This stock is missing from the current ranking table, which means it has fallen outside the Top 30 and should be treated as a rank-decay exit case.\n"
+                            elif status == 'HOLD_OK':
+                                report += f"  * ✅ **Diagnostic Reason:** {rejection_reason}\n"
                             else:
-                                report += f"  * ❌ **Diagnostic Reason:** Stock was excluded due to an unclassified baseline rule filter.\n"
+                                report += f"  * ⚠️ **Diagnostic Reason:** {rejection_reason}\n"
                         else:
                             report += f"  * ❌ **Diagnostic Reason:** Ticker shortcode mismatch. Asset code `{ticker_ns}` not found on yfinance NSE servers. Check for recent symbol renames or spelling typos.\n"
                     except Exception as diag_err:
