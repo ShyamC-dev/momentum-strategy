@@ -34,7 +34,7 @@ jobs:
     - name: Install Dependencies
       run: |
         python3 -m pip install --upgrade pip
-        pip install yfinance pandas tabulate
+        python3 -m pip install -r requirements.txt
 
     - name: Run Optimization Engine with Terminal Arguments
       # env:
