@@ -1,4 +1,4 @@
-# 📝 Portfolio Re-Ranking Commentary Report (September 2026)
+# 📝 Portfolio Re-Ranking Commentary Report (October 2026)
 
 **Target Allocation Parameters:** Budget ₹100,000.00 | Strategy Split: 5+5 Unique Split
 
@@ -6,62 +6,63 @@
 
 | Ticker     | Strategy    |   Price |   Quantity |
 |:-----------|:------------|--------:|-----------:|
-| COFORGE    | Velocity    |  1972.8 |          5 |
-| DIVISLAB   | Velocity    |  9100   |          1 |
-| APARINDS   | Velocity    | 17421   |          1 |
-| LAURUSLABS | Velocity    |  1840   |          5 |
-| APLAPOLLO  | Velocity    |  2250   |          4 |
-| KALYANKJIL | Compounding |   598.8 |         16 |
-| OFSS       | Compounding | 12058   |          1 |
-| RADICO     | Compounding |  4494   |          2 |
-| NAUKRI     | Compounding |  1319.8 |          7 |
-| FLUOROCHEM | Compounding |  4554   |          2 |
+| LAURUSLABS | Velocity    | 1984    |          5 |
+| DIVISLAB   | Velocity    | 9249    |          1 |
+| LENSKART   | Velocity    |  691.15 |         14 |
+| LGEINDIA   | Velocity    | 1721.8  |          5 |
+| MANKIND    | Velocity    | 2535    |          3 |
+| MCX        | Compounding | 3204    |          3 |
+| IPCALAB    | Compounding | 1943.2  |          5 |
+| AUROPHARMA | Compounding | 1676.8  |          5 |
+| MOTILALOFS | Compounding |  989.9  |         10 |
+| AJANTPHARM | Compounding | 3581    |          2 |
 
 ## 🔍 Trend Audit & Dynamic Commentary Matrix
 Analyzing active stock positions directly from your master ledger (`portfolio.csv`)...
 
 ### 🔹 LAURUSLABS (Velocity Strategy)
-* **Current Status:** Price: ₹1840.00 | Today's Strategy Score: 4.49% | Active Rank: #4
+* **Current Status:** Price: ₹1984.00 | Today's Strategy Score: 4.13% | Active Rank: #1
 * 🟢 **Stable Tracking:** Maintaining clean, steady compounding geometric tracking.
 
 --------------------------------------------------------------------------------
-### 🔹 MOTHERSON (Compounding Strategy)
-* **Current Status:** Price: ₹160.70 | Today's Strategy Score: 4.25% | Active Rank: #12
-* 🟢 **Stable Tracking:** Maintaining clean, steady compounding geometric tracking.
+### ❌ MOTHERSON (Compounding Strategy) | **REVIEW / FILTERED OUT**
+  * **Diagnostic Data Snapshot:** Current Price: ₹157.03 | Short-Term Trend Gap: -0.99% | 21D Peak-to-Trough Drawdown: 5.24% | 21D High-Low Range: 7.47%
+  * ⚠️ **Diagnostic Reason:** RSI 21 below 50
+  * ℹ️ **Interpretation:** This stock failed the fresh-entry screening (for example, low liquidity), not the active portfolio exit-risk check.
 
 --------------------------------------------------------------------------------
 ### ❌ LLOYDSME (Velocity Strategy) | **REVIEW / FILTERED OUT**
-  * **Diagnostic Data Snapshot:** Current Price: ₹1823.00 | Short-Term Trend Gap: -2.21% | 21D Peak-to-Trough Drawdown: 14.81% | 21D High-Low Range: 16.89%
+  * **Diagnostic Data Snapshot:** Current Price: ₹1776.80 | Short-Term Trend Gap: -0.06% | 21D Peak-to-Trough Drawdown: 6.59% | 21D High-Low Range: 9.27%
   * ⚠️ **Diagnostic Reason:** RSI 21 below 50
   * ℹ️ **Interpretation:** This stock failed the fresh-entry screening (for example, low liquidity), not the active portfolio exit-risk check.
 
 --------------------------------------------------------------------------------
 ### ❌ SONACOMS (Velocity Strategy) | **REVIEW / FILTERED OUT**
-  * **Diagnostic Data Snapshot:** Current Price: ₹789.00 | Short-Term Trend Gap: 0.07% | 21D Peak-to-Trough Drawdown: 5.02% | 21D High-Low Range: 8.36%
+  * **Diagnostic Data Snapshot:** Current Price: ₹805.00 | Short-Term Trend Gap: 1.02% | 21D Peak-to-Trough Drawdown: 4.48% | 21D High-Low Range: 9.31%
   * ❌ **Diagnostic Reason:** Not found in the current ranking tables and therefore outside the current Top 30; this is a rank decay exit case.
   * ℹ️ **Interpretation:** This stock is missing from the current ranking table, which means it has fallen outside the Top 30 and should be treated as a rank-decay exit case.
 
 --------------------------------------------------------------------------------
 ### ❌ TATATECH (Compounding Strategy) | **REVIEW / FILTERED OUT**
-  * **Diagnostic Data Snapshot:** Current Price: ₹800.00 | Short-Term Trend Gap: -0.15% | 21D Peak-to-Trough Drawdown: 9.74% | 21D High-Low Range: 11.94%
-  * ❌ **Diagnostic Reason:** Not found in the current ranking tables and therefore outside the current Top 30; this is a rank decay exit case.
-  * ℹ️ **Interpretation:** This stock is missing from the current ranking table, which means it has fallen outside the Top 30 and should be treated as a rank-decay exit case.
+  * **Diagnostic Data Snapshot:** Current Price: ₹698.80 | Short-Term Trend Gap: -4.42% | 21D Peak-to-Trough Drawdown: 14.70% | 21D High-Low Range: 17.72%
+  * ⚠️ **Diagnostic Reason:** RSI 21 below 50
+  * ℹ️ **Interpretation:** This stock failed the fresh-entry screening (for example, low liquidity), not the active portfolio exit-risk check.
 
 --------------------------------------------------------------------------------
 ### ❌ PAYTM (Compounding Strategy) | **REVIEW / FILTERED OUT**
-  * **Diagnostic Data Snapshot:** Current Price: ₹1659.50 | Short-Term Trend Gap: 2.91% | 21D Peak-to-Trough Drawdown: 6.26% | 21D High-Low Range: 17.72%
-  * ⚠️ **Diagnostic Reason:** 21D risk window exceeded
+  * **Diagnostic Data Snapshot:** Current Price: ₹1656.00 | Short-Term Trend Gap: -1.53% | 21D Peak-to-Trough Drawdown: 11.57% | 21D High-Low Range: 13.32%
+  * ⚠️ **Diagnostic Reason:** Short-term EMA breakdown
   * ℹ️ **Interpretation:** This stock failed the fresh-entry screening (for example, low liquidity), not the active portfolio exit-risk check.
 
 --------------------------------------------------------------------------------
 ### ❌ LALPATHLAB (Compounding Strategy) | **REVIEW / FILTERED OUT**
-  * **Diagnostic Data Snapshot:** Current Price: ₹1877.50 | Short-Term Trend Gap: 0.30% | 21D Peak-to-Trough Drawdown: 4.63% | 21D High-Low Range: 6.70%
+  * **Diagnostic Data Snapshot:** Current Price: ₹2005.10 | Short-Term Trend Gap: 1.92% | 21D Peak-to-Trough Drawdown: 2.48% | 21D High-Low Range: 8.97%
   * ❌ **Diagnostic Reason:** Not found in the current ranking tables and therefore outside the current Top 30; this is a rank decay exit case.
   * ℹ️ **Interpretation:** This stock is missing from the current ranking table, which means it has fallen outside the Top 30 and should be treated as a rank-decay exit case.
 
 --------------------------------------------------------------------------------
 ### 🔹 AUROPHARMA (Compounding Strategy)
-* **Current Status:** Price: ₹1653.10 | Today's Strategy Score: 3.13% | Active Rank: #21
+* **Current Status:** Price: ₹1676.80 | Today's Strategy Score: 2.74% | Active Rank: #6
 * 🟢 **Stable Tracking:** Maintaining clean, steady compounding geometric tracking.
 
 --------------------------------------------------------------------------------
