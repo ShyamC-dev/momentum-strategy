@@ -207,7 +207,7 @@ def get_nifty250():
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
       }
       try:
-        response = requests.get(url, headers=headers, timeout=15).text
+        response = requests.get(url, headers=headers, timeout=45).text
         lines = response.split('\n')
 
         # Locate where the true CSV headers start, bypassing any disclaimer junk lines
